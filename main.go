@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -373,17 +372,23 @@ func deleteInstance(token string, instanceID int) error {
 	return nil
 }
 
-// updateHostsFile adds or updates a hosts file entry for the given IP and hostname
-func updateHostsFile(ip, hostname string) error {
-	// Get the hosts file path based on OS
-	var hostsPath string
+// getHostsFilePath returns the hosts file path based on the operating system
+func getHostsFilePath() (string, error) {
 	switch runtime.GOOS {
 	case "windows":
-		hostsPath = filepath.Join(os.Getenv("SystemRoot"), "System32", "drivers", "etc", "hosts")
+		return filepath.Join(os.Getenv("SystemRoot"), "System32", "drivers", "etc", "hosts"), nil
 	case "darwin", "linux":
-		hostsPath = "/etc/hosts"
+		return "/etc/hosts", nil
 	default:
-		return fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
+		return "", fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
+	}
+}
+
+// updateHostsFile adds or updates a hosts file entry for the given IP and hostname
+func updateHostsFile(ip, hostname string) error {
+	hostsPath, err := getHostsFilePath()
+	if err != nil {
+		return err
 	}
 
 	// Read the current hosts file
@@ -397,14 +402,20 @@ func updateHostsFile(ip, hostname string) error {
 	var newLines []string
 	entryExists := false
 	entryPattern := fmt.Sprintf("%s\t%s", ip, hostname)
+	commentMarker := fmt.Sprintf("# Added by linode-manager for %s", hostname)
 
 	for _, line := range lines {
 		trimmedLine := strings.TrimSpace(line)
-		// Skip existing entries for the same hostname
-		if strings.Contains(trimmedLine, hostname) && !strings.HasPrefix(trimmedLine, "#") {
+		// Skip the old comment and entry for this specific hostname
+		if trimmedLine == commentMarker {
+			continue
+		}
+		// Check if this line has an entry for our exact hostname (not a substring match)
+		if !strings.HasPrefix(trimmedLine, "#") && trimmedLine != "" {
 			fields := strings.Fields(trimmedLine)
 			if len(fields) >= 2 && fields[1] == hostname {
 				// Replace with new IP
+				newLines = append(newLines, commentMarker)
 				newLines = append(newLines, entryPattern)
 				entryExists = true
 				continue
@@ -419,7 +430,7 @@ func updateHostsFile(ip, hostname string) error {
 		if len(newLines) > 0 && newLines[len(newLines)-1] != "" {
 			newLines = append(newLines, "")
 		}
-		newLines = append(newLines, fmt.Sprintf("# Added by linode-manager at %s", time.Now().Format("2006-01-02 15:04:05")))
+		newLines = append(newLines, commentMarker)
 		newLines = append(newLines, entryPattern)
 	}
 
@@ -434,15 +445,9 @@ func updateHostsFile(ip, hostname string) error {
 
 // removeHostsFileEntry removes a hosts file entry for the given hostname
 func removeHostsFileEntry(hostname string) error {
-	// Get the hosts file path based on OS
-	var hostsPath string
-	switch runtime.GOOS {
-	case "windows":
-		hostsPath = filepath.Join(os.Getenv("SystemRoot"), "System32", "drivers", "etc", "hosts")
-	case "darwin", "linux":
-		hostsPath = "/etc/hosts"
-	default:
-		return fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
+	hostsPath, err := getHostsFilePath()
+	if err != nil {
+		return err
 	}
 
 	// Read the current hosts file
@@ -452,32 +457,31 @@ func removeHostsFileEntry(hostname string) error {
 	}
 
 	// Parse existing hosts file and remove entry
-	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	lines := strings.Split(string(data), "\n")
 	var newLines []string
-	skipNextEmptyLine := false
+	commentMarker := fmt.Sprintf("# Added by linode-manager for %s", hostname)
+	skipNext := false
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	for _, line := range lines {
 		trimmedLine := strings.TrimSpace(line)
 
-		// Check if this is the comment line added by linode-manager
-		if strings.HasPrefix(trimmedLine, "# Added by linode-manager") {
-			skipNextEmptyLine = true
+		// Skip the comment line for this hostname
+		if trimmedLine == commentMarker {
+			skipNext = true
 			continue
 		}
 
-		// Skip entries for the hostname
-		if strings.Contains(trimmedLine, hostname) && !strings.HasPrefix(trimmedLine, "#") {
-			fields := strings.Fields(trimmedLine)
-			if len(fields) >= 2 && fields[1] == hostname {
-				continue
+		// Skip the entry line that follows the comment
+		if skipNext {
+			if !strings.HasPrefix(trimmedLine, "#") && trimmedLine != "" {
+				fields := strings.Fields(trimmedLine)
+				if len(fields) >= 2 && fields[1] == hostname {
+					skipNext = false
+					continue
+				}
 			}
-		}
-
-		// Skip empty line after removed entry
-		if skipNextEmptyLine && trimmedLine == "" {
-			skipNextEmptyLine = false
-			continue
+			// If it's not our entry, keep the line
+			skipNext = false
 		}
 
 		newLines = append(newLines, line)
