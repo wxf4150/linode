@@ -2,11 +2,13 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -188,6 +190,10 @@ func defaultMode(config *Config) error {
 				} else {
 					fmt.Printf("Successfully added hosts file entry: %s\t%s\n", ipAddress, targetLabel)
 				}
+
+				// Test SSH connection
+				fmt.Println("\nTesting SSH connection...")
+				testSSHConnection(targetLabel)
 			} else {
 				fmt.Println("No IPv4 address found for the instance.")
 			}
@@ -494,4 +500,40 @@ func removeHostsFileEntry(hostname string) error {
 	}
 
 	return nil
+}
+
+// testSSHConnection tests SSH connectivity to the given hostname
+func testSSHConnection(hostname string) {
+	// Run ssh command with a timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=10", hostname, "echo", "ok")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+
+	err := cmd.Run()
+	output := strings.TrimSpace(out.String())
+
+	if err != nil {
+		// Check if it's a timeout
+		if ctx.Err() == context.DeadlineExceeded {
+			fmt.Println("SSH connection test failed: connection timeout")
+		} else {
+			fmt.Printf("SSH connection test failed: %v\n", err)
+			if output != "" {
+				fmt.Printf("Output: %s\n", output)
+			}
+		}
+		return
+	}
+
+	// Check if output ends with "ok"
+	if strings.HasSuffix(output, "ok") {
+		fmt.Println("SSH connect test is ok.")
+	} else {
+		fmt.Printf("SSH connection test completed but output unexpected.\n")
+		fmt.Printf("Expected output to end with 'ok', got: %s\n", output)
+	}
 }

@@ -7,6 +7,7 @@ A simple command-line tool for managing Linode instances. This tool can automati
 - Automatically create a Linode instance if it doesn't exist
 - Monitor instance creation progress with inline status updates and animated dots
 - Automatically update system hosts file with instance IP address
+- Test SSH connectivity to newly created instances
 - Delete instances and clean up hosts file entries
 - Configuration via YAML file
 - Cross-platform support (Linux, macOS, Windows)
@@ -86,6 +87,7 @@ Run the application without parameters to check for or create an instance with l
    - Monitors creation progress every 2 seconds
    - Prints status updates until the instance is running
    - Automatically adds an entry to the system hosts file mapping the instance IP to "tmpnode"
+   - Tests SSH connectivity to the instance
 3. If an instance with label "tmpnode" exists:
    - Prints a message and exits
 
@@ -100,9 +102,14 @@ Instance 'tmpnode' is now running! (Time taken: 45.2 seconds)
 Instance IP Address: 172.105.1.234
 Updating hosts file with entry: 172.105.1.234	tmpnode
 Successfully added hosts file entry: 172.105.1.234	tmpnode
+
+Testing SSH connection...
+SSH connect test is ok.
 ```
 
-**Note:** On Linux and macOS, you may need to run with `sudo` to update the hosts file. On Windows, run as Administrator.
+**Note:** 
+- On Linux and macOS, you may need to run with `sudo` to update the hosts file. On Windows, run as Administrator.
+- SSH connection test requires SSH keys or authentication to be properly configured for the instance.
 
 ### Delete Instance (Drop Mode)
 
