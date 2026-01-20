@@ -5,9 +5,11 @@ A simple command-line tool for managing Linode instances. This tool can automati
 ## Features
 
 - Automatically create a Linode instance if it doesn't exist
-- Monitor instance creation progress
-- Delete instances on demand
+- Monitor instance creation progress with inline status updates and animated dots
+- Automatically update system hosts file with instance IP address
+- Delete instances and clean up hosts file entries
 - Configuration via YAML file
+- Cross-platform support (Linux, macOS, Windows)
 
 ## Prerequisites
 
@@ -83,6 +85,7 @@ Run the application without parameters to check for or create an instance with l
    - Creates a new instance with label "tmpnode"
    - Monitors creation progress every 2 seconds
    - Prints status updates until the instance is running
+   - Automatically adds an entry to the system hosts file mapping the instance IP to "tmpnode"
 3. If an instance with label "tmpnode" exists:
    - Prints a message and exits
 
@@ -91,12 +94,15 @@ Run the application without parameters to check for or create an instance with l
 Checking for existing instances...
 No instance with label 'tmpnode' found. Creating new instance...
 Instance created with ID: 12345678
-Waiting for instance to be running...
-Instance status: provisioning
-Instance status: booting
-Instance status: running
-Instance 'tmpnode' is now running!
+Instance status: provisioning...
+Instance status: booting...
+Instance 'tmpnode' is now running! (Time taken: 45.2 seconds)
+Instance IP Address: 172.105.1.234
+Updating hosts file with entry: 172.105.1.234	tmpnode
+Successfully added hosts file entry: 172.105.1.234	tmpnode
 ```
+
+**Note:** On Linux and macOS, you may need to run with `sudo` to update the hosts file. On Windows, run as Administrator.
 
 ### Delete Instance (Drop Mode)
 
@@ -110,6 +116,7 @@ Run the application with the `drop` parameter to delete the "tmpnode" instance:
 1. Lists all Linode instances
 2. If an instance with label "tmpnode" exists:
    - Deletes the instance
+   - Removes the hosts file entry for "tmpnode"
    - Prints confirmation message
 3. If no instance with label "tmpnode" exists:
    - Prints a message and exits
@@ -119,7 +126,11 @@ Run the application with the `drop` parameter to delete the "tmpnode" instance:
 Checking for existing instances...
 Found instance with label 'tmpnode' (ID: 12345678). Deleting...
 Instance 'tmpnode' has been deleted successfully.
+Removing hosts file entry for 'tmpnode'
+Successfully removed hosts file entry for 'tmpnode'
 ```
+
+**Note:** On Linux and macOS, you may need to run with `sudo` to update the hosts file. On Windows, run as Administrator.
 
 ## Common Issues
 
@@ -134,6 +145,31 @@ Your API token is invalid or expired. Check your `linode.yaml` and ensure the to
 ### "API request failed with status 400"
 
 One or more configuration parameters are invalid. Check the Linode API documentation for valid values for your region, type, and image.
+
+### "Warning: Failed to update hosts file"
+
+The application requires administrator/root privileges to update the hosts file.
+
+**Linux/macOS:**
+```bash
+sudo ./linode-manager
+```
+
+**Windows:**
+Run Command Prompt or PowerShell as Administrator, then run:
+```
+linode-manager.exe
+```
+
+### Hosts File Locations
+
+- **Linux/macOS:** `/etc/hosts`
+- **Windows:** `C:\Windows\System32\drivers\etc\hosts`
+
+If the automatic update fails, you can manually add the entry to your hosts file in the format:
+```
+<instance-ip>	tmpnode
+```
 
 ## License
 

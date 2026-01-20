@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -8,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -174,7 +177,18 @@ func defaultMode(config *Config) error {
 			elapsed := time.Since(startTime)
 			fmt.Printf("\rInstance '%s' is now running! (Time taken: %.1f seconds)\n", targetLabel, elapsed.Seconds())
 			if len(linodeInstance.Ipv4) > 0 {
-				fmt.Printf("Instance IP Address: %s\n", linodeInstance.Ipv4[0])
+				ipAddress := linodeInstance.Ipv4[0]
+				fmt.Printf("Instance IP Address: %s\n", ipAddress)
+
+				// Update hosts file
+				fmt.Printf("Updating hosts file with entry: %s\t%s\n", ipAddress, targetLabel)
+				if err := updateHostsFile(ipAddress, targetLabel); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: Failed to update hosts file: %v\n", err)
+					fmt.Fprintf(os.Stderr, "You can manually add the following entry to your hosts file:\n")
+					fmt.Fprintf(os.Stderr, "%s\t%s\n", ipAddress, targetLabel)
+				} else {
+					fmt.Printf("Successfully added hosts file entry: %s\t%s\n", ipAddress, targetLabel)
+				}
 			} else {
 				fmt.Println("No IPv4 address found for the instance.")
 			}
@@ -215,6 +229,15 @@ func dropMode(config *Config) error {
 	}
 
 	fmt.Printf("Instance '%s' has been deleted successfully.\n", targetLabel)
+
+	// Remove hosts file entry
+	fmt.Printf("Removing hosts file entry for '%s'\n", targetLabel)
+	if err := removeHostsFileEntry(targetLabel); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Failed to remove hosts file entry: %v\n", err)
+	} else {
+		fmt.Printf("Successfully removed hosts file entry for '%s'\n", targetLabel)
+	}
+
 	return nil
 }
 
@@ -345,6 +368,125 @@ func deleteInstance(token string, instanceID int) error {
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// updateHostsFile adds or updates a hosts file entry for the given IP and hostname
+func updateHostsFile(ip, hostname string) error {
+	// Get the hosts file path based on OS
+	var hostsPath string
+	switch runtime.GOOS {
+	case "windows":
+		hostsPath = filepath.Join(os.Getenv("SystemRoot"), "System32", "drivers", "etc", "hosts")
+	case "darwin", "linux":
+		hostsPath = "/etc/hosts"
+	default:
+		return fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
+	}
+
+	// Read the current hosts file
+	data, err := os.ReadFile(hostsPath)
+	if err != nil {
+		return fmt.Errorf("failed to read hosts file: %w (you may need to run with administrator/sudo privileges)", err)
+	}
+
+	// Parse existing hosts file and check if entry already exists
+	lines := strings.Split(string(data), "\n")
+	var newLines []string
+	entryExists := false
+	entryPattern := fmt.Sprintf("%s\t%s", ip, hostname)
+
+	for _, line := range lines {
+		trimmedLine := strings.TrimSpace(line)
+		// Skip existing entries for the same hostname
+		if strings.Contains(trimmedLine, hostname) && !strings.HasPrefix(trimmedLine, "#") {
+			fields := strings.Fields(trimmedLine)
+			if len(fields) >= 2 && fields[1] == hostname {
+				// Replace with new IP
+				newLines = append(newLines, entryPattern)
+				entryExists = true
+				continue
+			}
+		}
+		newLines = append(newLines, line)
+	}
+
+	// If entry doesn't exist, add it
+	if !entryExists {
+		// Ensure the file ends with a newline before adding new entry
+		if len(newLines) > 0 && newLines[len(newLines)-1] != "" {
+			newLines = append(newLines, "")
+		}
+		newLines = append(newLines, fmt.Sprintf("# Added by linode-manager at %s", time.Now().Format("2006-01-02 15:04:05")))
+		newLines = append(newLines, entryPattern)
+	}
+
+	// Write back to hosts file
+	newData := strings.Join(newLines, "\n")
+	if err := os.WriteFile(hostsPath, []byte(newData), 0644); err != nil {
+		return fmt.Errorf("failed to write hosts file: %w (you may need to run with administrator/sudo privileges)", err)
+	}
+
+	return nil
+}
+
+// removeHostsFileEntry removes a hosts file entry for the given hostname
+func removeHostsFileEntry(hostname string) error {
+	// Get the hosts file path based on OS
+	var hostsPath string
+	switch runtime.GOOS {
+	case "windows":
+		hostsPath = filepath.Join(os.Getenv("SystemRoot"), "System32", "drivers", "etc", "hosts")
+	case "darwin", "linux":
+		hostsPath = "/etc/hosts"
+	default:
+		return fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
+	}
+
+	// Read the current hosts file
+	data, err := os.ReadFile(hostsPath)
+	if err != nil {
+		return fmt.Errorf("failed to read hosts file: %w", err)
+	}
+
+	// Parse existing hosts file and remove entry
+	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	var newLines []string
+	skipNextEmptyLine := false
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmedLine := strings.TrimSpace(line)
+
+		// Check if this is the comment line added by linode-manager
+		if strings.HasPrefix(trimmedLine, "# Added by linode-manager") {
+			skipNextEmptyLine = true
+			continue
+		}
+
+		// Skip entries for the hostname
+		if strings.Contains(trimmedLine, hostname) && !strings.HasPrefix(trimmedLine, "#") {
+			fields := strings.Fields(trimmedLine)
+			if len(fields) >= 2 && fields[1] == hostname {
+				continue
+			}
+		}
+
+		// Skip empty line after removed entry
+		if skipNextEmptyLine && trimmedLine == "" {
+			skipNextEmptyLine = false
+			continue
+		}
+
+		newLines = append(newLines, line)
+	}
+
+	// Write back to hosts file
+	newData := strings.Join(newLines, "\n")
+	if err := os.WriteFile(hostsPath, []byte(newData), 0644); err != nil {
+		return fmt.Errorf("failed to write hosts file: %w", err)
 	}
 
 	return nil
