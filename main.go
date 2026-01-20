@@ -14,9 +14,9 @@ import (
 )
 
 const (
-	linodeAPIBase  = "https://api.linode.com/v4"
-	targetLabel    = "tmpnode"
-	clearPadding   = "     " // Padding to clear previous output on the same line
+	linodeAPIBase = "https://api.linode.com/v4"
+	targetLabel   = "tmpnode"
+	clearPadding  = "     " // Padding to clear previous output on the same line
 )
 
 // Config represents the configuration file structure
@@ -35,9 +35,10 @@ type Config struct {
 
 // LinodeInstance represents a Linode instance
 type LinodeInstance struct {
-	ID     int    `json:"id"`
-	Label  string `json:"label"`
-	Status string `json:"status"`
+	ID     int      `json:"id"`
+	Label  string   `json:"label"`
+	Status string   `json:"status"`
+	Ipv4   []string `json:"ipv4"`
 }
 
 // LinodeListResponse represents the response from list instances API
@@ -133,7 +134,7 @@ func defaultMode(config *Config) error {
 	}
 
 	if tmpNode != nil {
-		fmt.Printf("Instance with label '%s' already exists (ID: %d, Status: %s)\n", targetLabel, tmpNode.ID, tmpNode.Status)
+		fmt.Printf("Instance with label '%s' already exists (ID: %d, Status: %s, Ip: %s)\n", targetLabel, tmpNode.ID, tmpNode.Status, tmpNode.Ipv4)
 		return nil
 	}
 
@@ -160,18 +161,23 @@ func defaultMode(config *Config) error {
 	for {
 		<-ticker.C
 
-		status, err := getInstanceStatus(config.Token, instance.ID)
+		linodeInstance, err := getInstanceStatus(config.Token, instance.ID)
 		if err != nil {
 			return fmt.Errorf("failed to get instance status: %w", err)
 		}
 
-		// Print status inline with animated dots
-		fmt.Printf("\rInstance status: %s%s%s", status, dots[dotIndex], clearPadding)
+		// Print linodeInstance inline with animated dots
+		fmt.Printf("\rInstance status: %s%s%s", linodeInstance.Status, dots[dotIndex], clearPadding)
 		dotIndex = (dotIndex + 1) % len(dots)
 
-		if status == "running" {
+		if linodeInstance.Status == "running" {
 			elapsed := time.Since(startTime)
 			fmt.Printf("\rInstance '%s' is now running! (Time taken: %.1f seconds)\n", targetLabel, elapsed.Seconds())
+			if len(linodeInstance.Ipv4) > 0 {
+				fmt.Printf("Instance IP Address: %s\n", linodeInstance.Ipv4[0])
+			} else {
+				fmt.Println("No IPv4 address found for the instance.")
+			}
 			break
 		}
 	}
@@ -287,12 +293,12 @@ func createInstance(config *Config) (*LinodeInstance, error) {
 	return &instance, nil
 }
 
-func getInstanceStatus(token string, instanceID int) (string, error) {
+func getInstanceStatus(token string, instanceID int) (*LinodeInstance, error) {
 	url := fmt.Sprintf("%s/linode/instances/%d", linodeAPIBase, instanceID)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -301,21 +307,21 @@ func getInstanceStatus(token string, instanceID int) (string, error) {
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
 	var instance LinodeInstance
 	if err := json.NewDecoder(resp.Body).Decode(&instance); err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return instance.Status, nil
+	return &instance, nil
 }
 
 func deleteInstance(token string, instanceID int) error {
