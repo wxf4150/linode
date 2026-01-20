@@ -11,7 +11,7 @@ A simple command-line tool for managing Linode instances. This tool can automati
 
 ## Prerequisites
 
-- Go 1.16 or later
+- Go 1.21 or later
 - A Linode account with a Personal Access Token
 - API documentation: https://techdocs.akamai.com/linode-api/reference/get-linode-instances
 
