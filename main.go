@@ -140,7 +140,19 @@ func defaultMode(config *Config) error {
 
 	if tmpNode != nil {
 		fmt.Printf("Instance with label '%s' already exists (ID: %d, Status: %s, Ip: %s)\n", targetLabel, tmpNode.ID, tmpNode.Status, tmpNode.Ipv4)
-		return nil
+		// Update hosts file
+		if len(tmpNode.Ipv4) > 0 {
+			ipAddress := tmpNode.Ipv4[0]
+			fmt.Printf("Updating hosts file with entry: %s\t%s\n", ipAddress, targetLabel)
+			if err := updateHostsFile(ipAddress, targetLabel); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: Failed to update hosts file: %v\n", err)
+				fmt.Fprintf(os.Stderr, "You can manually add the following entry to your hosts file:\n")
+				fmt.Fprintf(os.Stderr, "%s\t%s\n", ipAddress, targetLabel)
+			} else {
+				fmt.Printf("Successfully added hosts file entry: %s\t%s\n", ipAddress, targetLabel)
+			}
+			return nil
+		}
 	}
 
 	// Create new instance
@@ -505,40 +517,37 @@ func removeHostsFileEntry(hostname string) error {
 
 // testSSHConnection tests SSH connectivity to the given hostname
 func testSSHConnection(hostname string) {
-	// Run ssh command with a timeout
-	ctx, cancel := context.WithTimeout(context.Background(), sshTimeout*time.Second)
-	defer cancel()
+	for attempt := 1; ; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), sshTimeout*time.Second)
 
-	// Note: StrictHostKeyChecking=no is used for convenience but makes the connection
-	// vulnerable to man-in-the-middle attacks. For production use, consider using
-	// proper SSH key verification.
-	timeoutStr := fmt.Sprintf("%d", sshTimeout)
-	cmd := exec.CommandContext(ctx, "ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout="+timeoutStr, hostname, "echo", "ok")
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
+		timeoutStr := fmt.Sprintf("%d", sshTimeout)
+		cmd := exec.CommandContext(ctx, "ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout="+timeoutStr, hostname, "echo", "ok")
+		var out bytes.Buffer
+		cmd.Stdout = &out
+		cmd.Stderr = &out
 
-	err := cmd.Run()
-	output := strings.TrimSpace(out.String())
+		err := cmd.Run()
+		output := strings.TrimSpace(out.String())
+		cancel()
 
-	if err != nil {
-		// Check if it's a timeout
-		if ctx.Err() == context.DeadlineExceeded {
-			fmt.Println("SSH connection test failed: connection timeout")
-		} else {
-			fmt.Printf("SSH connection test failed: %v\n", err)
-			if output != "" {
-				fmt.Printf("Output: %s\n", output)
+		if err != nil {
+			if ctx.Err() == context.DeadlineExceeded {
+				fmt.Println("SSH connection test failed: connection timeout")
+			} else {
+				fmt.Printf("SSH connection test failed: %v\n", err)
+				if output != "" {
+					fmt.Printf("Output: %s\n", output)
+				}
 			}
+			fmt.Printf("Retrying SSH connection test (attempt %d)...\n", attempt+1)
+			continue
 		}
-		return
-	}
 
-	// Check if output ends with "ok"
-	if strings.HasSuffix(output, "ok") {
-		fmt.Println("SSH connect test is ok.")
-	} else {
-		fmt.Printf("SSH connection test completed but output was unexpected.\n")
-		fmt.Printf("Expected output to end with 'ok', got: %s\n", output)
+		if strings.HasSuffix(output, "ok") {
+			fmt.Println("SSH connect test is ok.")
+			return
+		}
+
+		fmt.Printf("SSH connection test completed but output was unexpected.\nExpected output to end with 'ok', got: %s\nRetrying SSH connection test (attempt %d)...\n", output, attempt+1)
 	}
 }
