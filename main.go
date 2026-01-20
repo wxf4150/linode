@@ -21,6 +21,7 @@ const (
 	linodeAPIBase = "https://api.linode.com/v4"
 	targetLabel   = "tmpnode"
 	clearPadding  = "     " // Padding to clear previous output on the same line
+	sshTimeout    = 10      // SSH connection timeout in seconds
 )
 
 // Config represents the configuration file structure
@@ -505,10 +506,14 @@ func removeHostsFileEntry(hostname string) error {
 // testSSHConnection tests SSH connectivity to the given hostname
 func testSSHConnection(hostname string) {
 	// Run ssh command with a timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), sshTimeout*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=10", hostname, "echo", "ok")
+	// Note: StrictHostKeyChecking=no is used for convenience but makes the connection
+	// vulnerable to man-in-the-middle attacks. For production use, consider using
+	// proper SSH key verification.
+	timeoutStr := fmt.Sprintf("%d", sshTimeout)
+	cmd := exec.CommandContext(ctx, "ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout="+timeoutStr, hostname, "echo", "ok")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
@@ -533,7 +538,7 @@ func testSSHConnection(hostname string) {
 	if strings.HasSuffix(output, "ok") {
 		fmt.Println("SSH connect test is ok.")
 	} else {
-		fmt.Printf("SSH connection test completed but output unexpected.\n")
+		fmt.Printf("SSH connection test completed but output was unexpected.\n")
 		fmt.Printf("Expected output to end with 'ok', got: %s\n", output)
 	}
 }
