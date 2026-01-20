@@ -4,7 +4,7 @@
 *.dll
 *.so
 *.dylib
-config.yaml
+linode.yaml
 # Test binary, built with `go test -c`
 *.test
 

@@ -5,12 +5,13 @@
 # Get it from: https://cloud.linode.com/profile/tokens
 token: "YOUR_LINODE_API_TOKEN_HERE"
 
-# Instance configuration parameters
+# Instance configuration parameters ubuntu24.04 alpine3.22 ...
 image: "linode/ubuntu24.04"
 maintenance_policy: "linode/migrate"
 private_ip: false
 region: "us-lax"
 type: "g6-nanode-1"
+# Always use "tmpnode" as label
 label: "ubuntu-us-lax"
 root_pass: "YOUR_SECURE_PASSWORD_HERE"
 authorized_users:
