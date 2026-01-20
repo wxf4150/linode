@@ -1,0 +1,18 @@
+# Linode Configuration File
+# Place this file in the same directory as the application binary
+
+# Your Linode Personal Access Token (required)
+# Get it from: https://cloud.linode.com/profile/tokens
+token: "YOUR_LINODE_API_TOKEN_HERE"
+
+# Instance configuration parameters
+image: "linode/ubuntu24.04"
+maintenance_policy: "linode/migrate"
+private_ip: false
+region: "us-lax"
+type: "g6-nanode-1"
+label: "ubuntu-us-lax"
+root_pass: "B3d4ZkB3cGMBA"
+authorized_users:
+  - "ubuntu"
+disk_encryption: "disabled"
