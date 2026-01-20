@@ -145,11 +145,16 @@ func defaultMode(config *Config) error {
 	}
 
 	fmt.Printf("Instance created with ID: %d\n", instance.ID)
-	fmt.Println("Waiting for instance to be running...")
 
-	// Poll for status
+	// Track start time
+	startTime := time.Now()
+
+	// Poll for status with inline updates
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
+
+	dots := []string{"", ".", "..", "..."}
+	dotIndex := 0
 
 	for {
 		<-ticker.C
@@ -159,10 +164,13 @@ func defaultMode(config *Config) error {
 			return fmt.Errorf("failed to get instance status: %w", err)
 		}
 
-		fmt.Printf("Instance status: %s\n", status)
+		// Print status inline with animated dots
+		fmt.Printf("\rInstance status: %s%s   ", status, dots[dotIndex])
+		dotIndex = (dotIndex + 1) % len(dots)
 
 		if status == "running" {
-			fmt.Printf("Instance '%s' is now running!\n", targetLabel)
+			elapsed := time.Since(startTime)
+			fmt.Printf("\rInstance '%s' is now running! (Time taken: %.1f seconds)\n", targetLabel, elapsed.Seconds())
 			break
 		}
 	}
