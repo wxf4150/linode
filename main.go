@@ -14,8 +14,9 @@ import (
 )
 
 const (
-	linodeAPIBase = "https://api.linode.com/v4"
-	targetLabel   = "tmpnode"
+	linodeAPIBase  = "https://api.linode.com/v4"
+	targetLabel    = "tmpnode"
+	clearPadding   = "     " // Padding to clear previous output on the same line
 )
 
 // Config represents the configuration file structure
@@ -165,7 +166,7 @@ func defaultMode(config *Config) error {
 		}
 
 		// Print status inline with animated dots
-		fmt.Printf("\rInstance status: %s%s   ", status, dots[dotIndex])
+		fmt.Printf("\rInstance status: %s%s%s", status, dots[dotIndex], clearPadding)
 		dotIndex = (dotIndex + 1) % len(dots)
 
 		if status == "running" {
