@@ -12,7 +12,7 @@ private_ip: false
 region: "us-lax"
 type: "g6-nanode-1"
 label: "ubuntu-us-lax"
-root_pass: "B3d4ZkB3cGMBA"
+root_pass: "YOUR_SECURE_PASSWORD_HERE"
 authorized_users:
   - "ubuntu"
 disk_encryption: "disabled"
